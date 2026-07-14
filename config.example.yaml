@@ -1,0 +1,40 @@
+# Copiá este archivo a config.yaml y completá tus propios criterios.
+# config.yaml NO se sube al repo (está en .gitignore).
+
+search:
+  keywords:
+    - "Desarrollador Backend"
+    - "Data Analyst"
+  locations:
+    - "Buenos Aires, Argentina"
+    - "Remoto"
+  remote_only: false
+  salary_min: null
+  exclude_keywords:
+    - "pasantia"
+    - "sin experiencia"
+  max_results_per_site: 25
+
+sites:
+  indeed:
+    enabled: true
+    domain: "ar.indeed.com"
+    delay: 2.0
+  linkedin:
+    enabled: true
+    delay: 3.0
+  zonajobs:
+    enabled: true
+    base_url: "https://www.zonajobs.com.ar"
+    delay: 3.0
+
+notification:
+  output_dir: "data/reports"
+
+cover_letter:
+  enabled: true
+  cv_path: "cv/cv.txt"
+  anthropic_model: "claude-sonnet-5"
+
+db:
+  path: "data/jobs.sqlite3"
