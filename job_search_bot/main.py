@@ -7,7 +7,7 @@ from .config import load_config
 from .cover_letter import generate_cover_letter, load_cv
 from .db import JobDB
 from .matcher import filter_jobs
-from .report import write_report
+from .report import write_reports
 from .scrapers.indeed import IndeedScraper
 from .scrapers.linkedin import LinkedInScraper
 from .scrapers.zonajobs import ZonaJobsScraper
@@ -78,8 +78,13 @@ def main():
                 logger.warning("No se pudo generar carta para %r: %s", job.title, exc)
 
     notif_cfg = config.get("notification", {})
-    report_path = write_report(new_matches, cover_letters, notif_cfg.get("output_dir", "data/reports"))
-    logger.info("Reporte guardado en %s", report_path)
+    md_path, html_path = write_reports(new_matches, cover_letters, notif_cfg.get("output_dir", "data/reports"))
+    logger.info("Reporte guardado en %s y %s", md_path, html_path)
+
+    if notif_cfg.get("open_in_browser", True):
+        import webbrowser
+
+        webbrowser.open(html_path.resolve().as_uri())
 
     db.close()
 
