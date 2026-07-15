@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import List, Optional
 
 from ..freshness import extract_date_text
@@ -98,12 +99,30 @@ class ZonaJobsScraper(BaseScraper):
         ]
         return lines[0] if lines else "N/D"
 
+    @staticmethod
+    def _slugify(keyword: str) -> str:
+        # Cualquier caracter que no sea letra/número se convierte en guión
+        # (ej. "Director, Product Management" -> "director-product-management").
+        # Antes solo se reemplazaban espacios, así que una coma armaba una URL
+        # inválida que se colgaba 30s y tiraba abajo toda la corrida.
+        slug = re.sub(r"[^a-z0-9]+", "-", keyword.strip().lower())
+        return slug.strip("-")
+
     def _search_one(self, page, keyword: str, location: str, max_results: int) -> List[JobPosting]:
-        slug = keyword.strip().lower().replace(" ", "-")
+        slug = self._slugify(keyword)
         url = f"{self.base_url}/empleos-busqueda-{slug}.html"
 
         jobs: List[JobPosting] = []
-        page.goto(url, timeout=30000, wait_until="domcontentloaded")
+        try:
+            page.goto(url, timeout=30000, wait_until="domcontentloaded")
+        except Exception as exc:
+            logger.warning(
+                "ZonaJobs: no se pudo cargar la página para %r en %r (%s). Sigo con la próxima búsqueda.",
+                keyword,
+                location,
+                exc,
+            )
+            return []
         page.wait_for_timeout(int(self.delay * 1000))
 
         if "Attention Required" in page.title() or page.query_selector("#cf-wrapper"):

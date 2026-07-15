@@ -66,7 +66,17 @@ class IndeedScraper(BaseScraper):
         url = f"https://{domain}/jobs?{urlencode(params)}"
 
         jobs: List[JobPosting] = []
-        page.goto(url, timeout=30000, wait_until="domcontentloaded")
+        try:
+            page.goto(url, timeout=30000, wait_until="domcontentloaded")
+        except Exception as exc:
+            logger.warning(
+                "Indeed (%s): no se pudo cargar la página para %r en %r (%s). Sigo con la próxima búsqueda.",
+                domain,
+                keyword,
+                location,
+                exc,
+            )
+            return []
         page.wait_for_timeout(int(self.delay * 1000))
 
         if page.query_selector("#challenge-form") or "verify you are a human" in page.content().lower():
