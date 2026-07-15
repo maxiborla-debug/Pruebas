@@ -89,14 +89,18 @@ class IndeedScraper(BaseScraper):
             )
 
         for card in cards[:max_results]:
-            title_el = card.query_selector("h2.jobTitle span") or card.query_selector("h2.jobTitle a")
+            # Indeed usa h2.jobTitle en algunas versiones y h3.jobTitle en otras
+            # (confirmado con debug_indeed.py: hoy usa h3), probamos ambas.
+            title_el = card.query_selector("h2.jobTitle span, h3.jobTitle span") or card.query_selector(
+                "h2.jobTitle a, h3.jobTitle a"
+            )
             company_el = card.query_selector('span[data-testid="company-name"]') or card.query_selector(
                 ".companyName"
             )
             location_el = card.query_selector('div[data-testid="text-location"]') or card.query_selector(
                 ".companyLocation"
             )
-            link_el = card.query_selector("h2.jobTitle a")
+            link_el = card.query_selector("h2.jobTitle a, h3.jobTitle a")
             salary_el = card.query_selector('div[data-testid="attribute_snippet_testid"]')
 
             if not (title_el and link_el):
