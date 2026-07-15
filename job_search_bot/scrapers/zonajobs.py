@@ -8,16 +8,22 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_LOCATIONS = ["Argentina"]
 
+USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
+
 
 class ZonaJobsScraper(BaseScraper):
     """
-    ZonaJobs / Bumeran (grupo Navent) renderizan los resultados con JavaScript
-    (React), así que requests + BeautifulSoup no alcanza: usamos Playwright para
-    cargar la página como un navegador real.
+    ZonaJobs/Bumeran están detrás de Cloudflare, que bloquea navegadores headless
+    directamente ("Sorry, you have been blocked") — confirmado revisando el HTML
+    que devolvía. No es un problema de selectores, es un bloqueo activo.
 
-    La URL de búsqueda se confirmó que carga bien; lo que falta ajustar son los
-    selectores CSS de cada tarjeta de aviso (ver README para cómo conseguirlos
-    con "Inspeccionar" en el navegador).
+    Usamos playwright-stealth para que el navegador se parezca más a uno real
+    (mismo espíritu que el User-Agent, pero más completo). Si Cloudflare sigue
+    bloqueando con esto, no tiene sentido insistir con técnicas más agresivas:
+    mejor sacar este sitio de la búsqueda automática.
     """
 
     name = "zonajobs"
@@ -41,10 +47,25 @@ class ZonaJobsScraper(BaseScraper):
             )
             return []
 
+        try:
+            from playwright_stealth import stealth_sync
+        except ImportError:
+            stealth_sync = None
+            logger.warning(
+                "Falta 'playwright-stealth' (pip install playwright-stealth). "
+                "Sin esto es más probable que Cloudflare bloquee la request."
+            )
+
         jobs: List[JobPosting] = []
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
+            page = browser.new_page(
+                user_agent=USER_AGENT,
+                locale="es-AR",
+                viewport={"width": 1366, "height": 900},
+            )
+            if stealth_sync:
+                stealth_sync(page)
             try:
                 for location in self.locations:
                     jobs.extend(self._search_one(page, keyword, location, max_results))
@@ -60,6 +81,15 @@ class ZonaJobsScraper(BaseScraper):
         jobs: List[JobPosting] = []
         page.goto(url, timeout=30000, wait_until="domcontentloaded")
         page.wait_for_timeout(int(self.delay * 1000))
+
+        if "Attention Required" in page.title() or page.query_selector("#cf-wrapper"):
+            logger.warning(
+                "ZonaJobs: Cloudflare bloqueó la request para %r (mismo bloqueo que "
+                "viste en el navegador). No hay selector que arregle esto — es un "
+                "bloqueo activo del sitio, no un cambio de HTML.",
+                keyword,
+            )
+            return []
 
         cards = page.query_selector_all("a[data-qa='JobListing_Item']")
         if not cards:
