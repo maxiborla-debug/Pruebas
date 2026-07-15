@@ -20,9 +20,11 @@ class IndeedScraper(BaseScraper):
     Usa Playwright (navegador real headless) en vez de requests simples, porque
     Indeed devuelve 403 a la mayoría de los pedidos hechos con librerías HTTP.
 
-    Cada dominio (ej. ar.indeed.com, indeed.es) puede tener su propia lista de
-    ubicaciones — así indeed.es solo se busca en "Remoto" en vez de repetir
-    ubicaciones argentinas que no tienen sentido ahí.
+    Cada búsqueda usa un contexto de navegador nuevo (sin cookies compartidas
+    con las anteriores): confirmamos que Indeed deja pasar la primera visita de
+    una sesión pero bloquea las siguientes que vienen de la misma sesión, así
+    que reusar una sola página para varias búsquedas seguidas las hacía fallar
+    a partir de la segunda.
     """
 
     name = "indeed"
@@ -43,12 +45,16 @@ class IndeedScraper(BaseScraper):
         jobs: List[JobPosting] = []
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
-            page = browser.new_page(user_agent=USER_AGENT)
             try:
                 for entry in self.domains:
                     domain = entry["domain"]
                     for location in entry.get("locations", ["Remoto"]):
-                        jobs.extend(self._search_one(page, domain, keyword, location, max_results))
+                        context = browser.new_context(user_agent=USER_AGENT)
+                        page = context.new_page()
+                        try:
+                            jobs.extend(self._search_one(page, domain, keyword, location, max_results))
+                        finally:
+                            context.close()
             finally:
                 browser.close()
 
