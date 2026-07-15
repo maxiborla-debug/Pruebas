@@ -1,6 +1,7 @@
 import logging
 from typing import List, Optional
 
+from ..freshness import extract_date_text
 from ..models import JobPosting
 from .base import BaseScraper
 
@@ -131,7 +132,9 @@ class ZonaJobsScraper(BaseScraper):
             if not href or href in seen_urls:
                 continue
             seen_urls.add(href)
+            card_text = card.inner_text() or ""
             title = self._extract_title(card)
+            posted_date = extract_date_text(card_text)
             full_url = href if href.startswith("http") else f"{self.base_url}{href}"
             jobs.append(
                 JobPosting(
@@ -140,6 +143,7 @@ class ZonaJobsScraper(BaseScraper):
                     company="N/D",
                     location=location,
                     url=full_url,
+                    posted_date=posted_date,
                 )
             )
 

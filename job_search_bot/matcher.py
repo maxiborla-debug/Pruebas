@@ -1,5 +1,6 @@
 from typing import List
 
+from .freshness import days_ago
 from .models import JobPosting
 
 
@@ -18,9 +19,19 @@ def matches(job: JobPosting, criteria: dict) -> bool:
     loc_text = job.location.lower()
     is_remote = "remot" in loc_text
     if criteria.get("remote_only", False):
-        return is_remote
-    if locations and not is_remote and not any(l in loc_text for l in locations):
+        if not is_remote:
+            return False
+    elif locations and not is_remote and not any(l in loc_text for l in locations):
         return False
+
+    max_days_old = criteria.get("max_days_old")
+    if max_days_old is not None:
+        age = days_ago(job.posted_date) if job.posted_date else None
+        # Si no pudimos determinar la antigüedad, la dejamos pasar (mejor no
+        # perder una vacante real por un formato de fecha que no reconocimos)
+        # en vez de descartarla a ciegas.
+        if age is not None and age > max_days_old:
+            return False
 
     return True
 

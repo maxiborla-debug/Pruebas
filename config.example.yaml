@@ -12,6 +12,9 @@ search:
     - "Remoto"
   remote_only: false
   salary_min: null
+  # Descarta vacantes más viejas que esto (cuando el sitio muestra la fecha).
+  # Si no se puede determinar la fecha, la vacante NO se descarta.
+  max_days_old: 30
   exclude_keywords:
     - "pasantia"
     - "sin experiencia"

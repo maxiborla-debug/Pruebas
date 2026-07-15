@@ -2,6 +2,7 @@ import logging
 from typing import List, Optional
 from urllib.parse import urlencode
 
+from ..freshness import extract_date_text
 from ..models import JobPosting
 from .base import BaseScraper
 
@@ -108,6 +109,7 @@ class IndeedScraper(BaseScraper):
 
             href = link_el.get_attribute("href") or ""
             full_url = href if href.startswith("http") else f"https://{domain}{href}"
+            posted_date = extract_date_text(card.inner_text() or "")
 
             jobs.append(
                 JobPosting(
@@ -117,6 +119,7 @@ class IndeedScraper(BaseScraper):
                     location=location_el.inner_text().strip() if location_el else location,
                     url=full_url,
                     salary=salary_el.inner_text().strip() if salary_el else None,
+                    posted_date=posted_date,
                 )
             )
 

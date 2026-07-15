@@ -5,6 +5,7 @@ from typing import List, Optional
 import requests
 from bs4 import BeautifulSoup
 
+from ..freshness import extract_date_text
 from ..models import JobPosting
 from .base import BaseScraper
 
@@ -75,9 +76,16 @@ class LinkedInScraper(BaseScraper):
             company_el = card.select_one("h4.base-search-card__subtitle")
             location_el = card.select_one("span.job-search-card__location")
             link_el = card.select_one("a.base-card__full-link")
+            time_el = card.select_one("time")
 
             if not (title_el and link_el):
                 continue
+
+            posted_date = None
+            if time_el and time_el.get("datetime"):
+                posted_date = time_el.get("datetime")
+            else:
+                posted_date = extract_date_text(card.get_text(" ", strip=True))
 
             jobs.append(
                 JobPosting(
@@ -86,6 +94,7 @@ class LinkedInScraper(BaseScraper):
                     company=company_el.get_text(strip=True) if company_el else "N/D",
                     location=location_el.get_text(strip=True) if location_el else location,
                     url=link_el.get("href", "").split("?")[0],
+                    posted_date=posted_date,
                 )
             )
 
