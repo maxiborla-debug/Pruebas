@@ -74,6 +74,28 @@ class ZonaJobsScraper(BaseScraper):
 
         return jobs
 
+    def _extract_title(self, card) -> str:
+        # El link de la tarjeta suele empezar con "Publicado hace X días" /
+        # "Actualizado hace X días" antes del título real, así que lo salteamos.
+        heading = card.query_selector("h2") or card.query_selector("h3")
+        if heading:
+            text = heading.inner_text().strip()
+            if text:
+                return text
+
+        attr_title = card.get_attribute("title")
+        if attr_title:
+            return attr_title.strip()
+
+        lines = [line.strip() for line in (card.inner_text() or "").split("\n") if line.strip()]
+        lines = [
+            line
+            for line in lines
+            if not line.lower().startswith("publicado")
+            and not line.lower().startswith("actualizado")
+        ]
+        return lines[0] if lines else "N/D"
+
     def _search_one(self, page, keyword: str, location: str, max_results: int) -> List[JobPosting]:
         slug = keyword.strip().lower().replace(" ", "-")
         url = f"{self.base_url}/empleos-busqueda-{slug}.html"
@@ -109,7 +131,7 @@ class ZonaJobsScraper(BaseScraper):
             if not href or href in seen_urls:
                 continue
             seen_urls.add(href)
-            title = card.get_attribute("title") or (card.inner_text() or "").split("\n")[0]
+            title = self._extract_title(card)
             full_url = href if href.startswith("http") else f"{self.base_url}{href}"
             jobs.append(
                 JobPosting(
