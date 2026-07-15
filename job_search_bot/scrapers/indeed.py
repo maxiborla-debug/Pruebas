@@ -12,28 +12,26 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 
+DEFAULT_DOMAINS = [{"domain": "ar.indeed.com", "locations": ["Argentina", "Buenos Aires", "Remoto"]}]
+
 
 class IndeedScraper(BaseScraper):
     """
     Usa Playwright (navegador real headless) en vez de requests simples, porque
-    Indeed devuelve 403 a la mayoría de los pedidos hechos con librerías HTTP
-    (detecta que no es un navegador real). Con un navegador de verdad se evita
-    ese bloqueo básico, aunque Indeed puede seguir mostrando un captcha si
-    detecta actividad repetida desde la misma IP — si eso pasa, esperá un rato
-    antes de volver a correr el bot.
+    Indeed devuelve 403 a la mayoría de los pedidos hechos con librerías HTTP.
 
-    Busca en varios dominios de Indeed (ej. ar.indeed.com, indeed.es) dentro de
-    la misma corrida, reutilizando el mismo navegador para no abrir uno por
-    dominio.
+    Cada dominio (ej. ar.indeed.com, indeed.es) puede tener su propia lista de
+    ubicaciones — así indeed.es solo se busca en "Remoto" en vez de repetir
+    ubicaciones argentinas que no tienen sentido ahí.
     """
 
     name = "indeed"
 
-    def __init__(self, domains: Optional[List[str]] = None, delay: float = 2.0):
-        self.domains = domains or ["ar.indeed.com"]
+    def __init__(self, domains: Optional[List[dict]] = None, delay: float = 2.0):
+        self.domains = domains or DEFAULT_DOMAINS
         self.delay = delay
 
-    def search(self, keyword: str, location: str, max_results: int = 25) -> List[JobPosting]:
+    def search(self, keyword: str, max_results: int = 25) -> List[JobPosting]:
         try:
             from playwright.sync_api import sync_playwright
         except ImportError:
@@ -47,16 +45,16 @@ class IndeedScraper(BaseScraper):
             browser = p.chromium.launch(headless=True)
             page = browser.new_page(user_agent=USER_AGENT)
             try:
-                for domain in self.domains:
-                    jobs.extend(
-                        self._search_domain(page, domain, keyword, location, max_results)
-                    )
+                for entry in self.domains:
+                    domain = entry["domain"]
+                    for location in entry.get("locations", ["Remoto"]):
+                        jobs.extend(self._search_one(page, domain, keyword, location, max_results))
             finally:
                 browser.close()
 
         return jobs
 
-    def _search_domain(self, page, domain: str, keyword: str, location: str, max_results: int) -> List[JobPosting]:
+    def _search_one(self, page, domain: str, keyword: str, location: str, max_results: int) -> List[JobPosting]:
         params = {"q": keyword, "l": location}
         url = f"https://{domain}/jobs?{urlencode(params)}"
 
@@ -66,21 +64,22 @@ class IndeedScraper(BaseScraper):
 
         if page.query_selector("#challenge-form") or "verify you are a human" in page.content().lower():
             logger.warning(
-                "Indeed (%s): mostró una pantalla de verificación/captcha para %r. "
+                "Indeed (%s): mostró una pantalla de verificación/captcha para %r en %r. "
                 "Esperá un rato antes de volver a correr el bot.",
                 domain,
                 keyword,
+                location,
             )
             return []
 
         cards = page.query_selector_all("div.job_seen_beacon") or page.query_selector_all("td.resultContent")
         if not cards:
             logger.warning(
-                "Indeed (%s): no se encontraron resultados para %r. Es posible que Indeed "
-                "haya cambiado el HTML, o que ese dominio no tenga resultados para esa "
-                "ubicación: revisá job_search_bot/scrapers/indeed.py.",
+                "Indeed (%s): no se encontraron resultados para %r en %r. Es posible que Indeed "
+                "haya cambiado el HTML, o que ese dominio no tenga resultados para esa ubicación.",
                 domain,
                 keyword,
+                location,
             )
 
         for card in cards[:max_results]:

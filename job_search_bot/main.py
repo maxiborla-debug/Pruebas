@@ -54,18 +54,15 @@ def main():
     new_matches = []
     for scraper in scrapers:
         for keyword in search_cfg["keywords"]:
-            for location in search_cfg["locations"]:
-                logger.info("[%s] buscando %r en %r...", scraper.name, keyword, location)
-                results = scraper.search(
-                    keyword, location, max_results=search_cfg.get("max_results_per_site", 25)
-                )
-                for job in results:
-                    if not db.is_new(job):
-                        continue
-                    is_match = bool(filter_jobs([job], search_cfg))
-                    db.save(job, matched=is_match)
-                    if is_match:
-                        new_matches.append(job)
+            logger.info("[%s] buscando %r...", scraper.name, keyword)
+            results = scraper.search(keyword, max_results=search_cfg.get("max_results_per_site", 25))
+            for job in results:
+                if not db.is_new(job):
+                    continue
+                is_match = bool(filter_jobs([job], search_cfg))
+                db.save(job, matched=is_match)
+                if is_match:
+                    new_matches.append(job)
 
     logger.info("Encontradas %d vacantes nuevas que matchean tus criterios.", len(new_matches))
 

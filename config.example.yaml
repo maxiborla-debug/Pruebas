@@ -5,6 +5,8 @@ search:
   keywords:
     - "Desarrollador Backend"
     - "Data Analyst"
+  # Usado solo para el filtro final por ubicación (matcher.py). La búsqueda
+  # real por sitio se define abajo en cada entrada de `sites.*`.
   locations:
     - "Buenos Aires, Argentina"
     - "Remoto"
@@ -18,17 +20,27 @@ search:
 sites:
   indeed:
     enabled: true
-    domains:
-      - "ar.indeed.com"
-      - "indeed.es"
     delay: 2.0
+    domains:
+      - domain: "ar.indeed.com"
+        locations:
+          - "Buenos Aires, Argentina"
+          - "Remoto"
+
   linkedin:
     enabled: true
     delay: 3.0
+    locations:
+      - "Buenos Aires, Argentina"
+      - "Remote"
+
   zonajobs:
     enabled: true
     base_url: "https://www.zonajobs.com.ar"
     delay: 3.0
+    locations:
+      - "Buenos Aires, Argentina"
+      - "Remoto"
 
 notification:
   output_dir: "data/reports"
