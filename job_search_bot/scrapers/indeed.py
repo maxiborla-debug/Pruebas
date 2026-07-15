@@ -1,31 +1,26 @@
 import logging
-import time
 from typing import List
 from urllib.parse import urlencode
-
-import requests
-from bs4 import BeautifulSoup
 
 from ..models import JobPosting
 from .base import BaseScraper
 
 logger = logging.getLogger(__name__)
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept-Language": "es-AR,es;q=0.9,en;q=0.8",
-}
+USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
 
 
 class IndeedScraper(BaseScraper):
     """
-    Scraping HTML directo (Indeed no ofrece API pública para búsqueda de empleo).
-    Los selectores de abajo son los usados por Indeed en los últimos años, pero
-    pueden cambiar sin aviso. Si `search` deja de devolver resultados, corré con
-    logging en DEBUG y revisá el HTML crudo para actualizar los selectores.
+    Usa Playwright (navegador real headless) en vez de requests simples, porque
+    Indeed devuelve 403 a la mayoría de los pedidos hechos con librerías HTTP
+    (detecta que no es un navegador real). Con un navegador de verdad se evita
+    ese bloqueo básico, aunque Indeed puede seguir mostrando un captcha si
+    detecta actividad repetida desde la misma IP — si eso pasa, esperá un rato
+    antes de volver a correr el bot.
     """
 
     name = "indeed"
@@ -35,50 +30,71 @@ class IndeedScraper(BaseScraper):
         self.delay = delay
 
     def search(self, keyword: str, location: str, max_results: int = 25) -> List[JobPosting]:
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            logger.error(
+                "Falta 'playwright'. Instalá con: pip install playwright && playwright install chromium"
+            )
+            return []
+
         params = {"q": keyword, "l": location}
         url = f"https://{self.domain}/jobs?{urlencode(params)}"
-        try:
-            resp = requests.get(url, headers=HEADERS, timeout=20)
-            resp.raise_for_status()
-        except requests.RequestException as exc:
-            logger.warning("Indeed: falló la request para %r (%s)", keyword, exc)
-            return []
 
-        soup = BeautifulSoup(resp.text, "html.parser")
-        cards = soup.select("div.job_seen_beacon") or soup.select("td.resultContent")
-        if not cards:
-            logger.warning(
-                "Indeed: no se encontraron resultados para %r. Es posible que Indeed "
-                "haya cambiado el HTML o esté mostrando un captcha: revisá "
-                "job_search_bot/scrapers/indeed.py y actualizá los selectores.",
-                keyword,
-            )
-            return []
+        jobs: List[JobPosting] = []
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(user_agent=USER_AGENT)
+            try:
+                page.goto(url, timeout=30000, wait_until="domcontentloaded")
+                page.wait_for_timeout(int(self.delay * 1000))
 
-        jobs = []
-        for card in cards[:max_results]:
-            title_el = card.select_one("h2.jobTitle span") or card.select_one("h2.jobTitle a")
-            company_el = card.select_one('span[data-testid="company-name"]') or card.select_one(".companyName")
-            location_el = card.select_one('div[data-testid="text-location"]') or card.select_one(".companyLocation")
-            link_el = card.select_one("h2.jobTitle a")
-            salary_el = card.select_one('div[data-testid="attribute_snippet_testid"]')
+                if page.query_selector("#challenge-form") or "verify you are a human" in page.content().lower():
+                    logger.warning(
+                        "Indeed: mostró una pantalla de verificación/captcha para %r. "
+                        "Esperá un rato antes de volver a correr el bot.",
+                        keyword,
+                    )
+                    return []
 
-            if not (title_el and link_el):
-                continue
-
-            href = link_el.get("href", "")
-            full_url = href if href.startswith("http") else f"https://{self.domain}{href}"
-
-            jobs.append(
-                JobPosting(
-                    source=self.name,
-                    title=title_el.get_text(strip=True),
-                    company=company_el.get_text(strip=True) if company_el else "N/D",
-                    location=location_el.get_text(strip=True) if location_el else location,
-                    url=full_url,
-                    salary=salary_el.get_text(strip=True) if salary_el else None,
+                cards = page.query_selector_all("div.job_seen_beacon") or page.query_selector_all(
+                    "td.resultContent"
                 )
-            )
+                if not cards:
+                    logger.warning(
+                        "Indeed: no se encontraron resultados para %r. Es posible que Indeed "
+                        "haya cambiado el HTML: revisá job_search_bot/scrapers/indeed.py.",
+                        keyword,
+                    )
 
-        time.sleep(self.delay)
+                for card in cards[:max_results]:
+                    title_el = card.query_selector("h2.jobTitle span") or card.query_selector("h2.jobTitle a")
+                    company_el = card.query_selector('span[data-testid="company-name"]') or card.query_selector(
+                        ".companyName"
+                    )
+                    location_el = card.query_selector('div[data-testid="text-location"]') or card.query_selector(
+                        ".companyLocation"
+                    )
+                    link_el = card.query_selector("h2.jobTitle a")
+                    salary_el = card.query_selector('div[data-testid="attribute_snippet_testid"]')
+
+                    if not (title_el and link_el):
+                        continue
+
+                    href = link_el.get_attribute("href") or ""
+                    full_url = href if href.startswith("http") else f"https://{self.domain}{href}"
+
+                    jobs.append(
+                        JobPosting(
+                            source=self.name,
+                            title=title_el.inner_text().strip(),
+                            company=company_el.inner_text().strip() if company_el else "N/D",
+                            location=location_el.inner_text().strip() if location_el else location,
+                            url=full_url,
+                            salary=salary_el.inner_text().strip() if salary_el else None,
+                        )
+                    )
+            finally:
+                browser.close()
+
         return jobs
