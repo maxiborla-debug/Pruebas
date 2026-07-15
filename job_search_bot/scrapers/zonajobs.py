@@ -49,9 +49,10 @@ class ZonaJobsScraper(BaseScraper):
             return []
 
         try:
-            from playwright_stealth import stealth_sync
+            from playwright_stealth import Stealth
+            stealth = Stealth()
         except ImportError:
-            stealth_sync = None
+            stealth = None
             logger.warning(
                 "Falta 'playwright-stealth' (pip install playwright-stealth). "
                 "Sin esto es más probable que Cloudflare bloquee la request."
@@ -65,8 +66,8 @@ class ZonaJobsScraper(BaseScraper):
                 locale="es-AR",
                 viewport={"width": 1366, "height": 900},
             )
-            if stealth_sync:
-                stealth_sync(page)
+            if stealth:
+                stealth.apply_stealth_sync(page)
             try:
                 for location in self.locations:
                     jobs.extend(self._search_one(page, keyword, location, max_results))
