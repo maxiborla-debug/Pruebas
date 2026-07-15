@@ -18,7 +18,9 @@ search:
 sites:
   indeed:
     enabled: true
-    domain: "ar.indeed.com"
+    domains:
+      - "ar.indeed.com"
+      - "indeed.es"
     delay: 2.0
   linkedin:
     enabled: true
