@@ -1,5 +1,6 @@
 import sqlite3
 from pathlib import Path
+from typing import List
 
 from .models import JobPosting
 
@@ -49,6 +50,24 @@ class JobDB:
             ),
         )
         self.conn.commit()
+
+    def get_all_matched(self) -> List[JobPosting]:
+        cur = self.conn.execute(
+            "SELECT source, title, company, location, url, salary, posted_date "
+            "FROM jobs WHERE matched = 1 ORDER BY first_seen DESC"
+        )
+        return [
+            JobPosting(
+                source=row[0],
+                title=row[1],
+                company=row[2],
+                location=row[3],
+                url=row[4],
+                salary=row[5],
+                posted_date=row[6],
+            )
+            for row in cur.fetchall()
+        ]
 
     def mark_applied(self, uid: str) -> None:
         self.conn.execute("UPDATE jobs SET applied = 1 WHERE uid = ?", (uid,))

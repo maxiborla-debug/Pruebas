@@ -34,17 +34,41 @@ def build_scrapers(config: dict):
     return scrapers
 
 
+def _open_report(html_path, notif_cfg: dict) -> None:
+    if notif_cfg.get("open_in_browser", True):
+        import webbrowser
+
+        webbrowser.open(html_path.resolve().as_uri())
+
+
 def main():
     parser = argparse.ArgumentParser(description="Buscador semi-automático de empleo")
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--no-cover-letters", action="store_true")
+    parser.add_argument(
+        "--all-matches",
+        action="store_true",
+        help="No busca nada nuevo: genera un reporte con TODAS las vacantes que "
+        "matchearon tus criterios en cualquier corrida anterior (no solo las nuevas).",
+    )
     args = parser.parse_args()
 
     load_dotenv()
     config = load_config(args.config)
     search_cfg = config["search"]
+    notif_cfg = config.get("notification", {})
 
     db = JobDB(config["db"]["path"])
+
+    if args.all_matches:
+        all_matched = db.get_all_matched()
+        logger.info("Total de vacantes que matchearon alguna vez: %d", len(all_matched))
+        md_path, html_path = write_reports(all_matched, {}, notif_cfg.get("output_dir", "data/reports"))
+        logger.info("Reporte guardado en %s y %s", md_path, html_path)
+        _open_report(html_path, notif_cfg)
+        db.close()
+        return
+
     scrapers = build_scrapers(config)
 
     if not scrapers:
@@ -77,14 +101,9 @@ def main():
             except Exception as exc:
                 logger.warning("No se pudo generar carta para %r: %s", job.title, exc)
 
-    notif_cfg = config.get("notification", {})
     md_path, html_path = write_reports(new_matches, cover_letters, notif_cfg.get("output_dir", "data/reports"))
     logger.info("Reporte guardado en %s y %s", md_path, html_path)
-
-    if notif_cfg.get("open_in_browser", True):
-        import webbrowser
-
-        webbrowser.open(html_path.resolve().as_uri())
+    _open_report(html_path, notif_cfg)
 
     db.close()
 
